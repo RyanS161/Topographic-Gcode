@@ -5,9 +5,9 @@ from PIL import Image
 
 #User Variables (mm)#
 
-totalsize = 150 #Length of sides of the square
+totalsize = 50 #Length of sides of the square
 bordersize = 0 #Width of the border
-totaldepth =  25 #Max depth of cuts
+totaldepth =  15 #Max depth of cuts
 cuttingtoolDiameters = [3.175] #Diameters of the cutting tools in inches
 
 #############################################################################################
@@ -37,7 +37,6 @@ imagesize = Image.open("./map.png").size[0]
 mmPerPixel = mapsize / imagesize
 colors = [(255, 0, 0), (255, 255, 0), (0, 255, 0)] #Red for biggest, yellow for medium, green for smallest
 colors.reverse()
-
 layers = os.listdir("./layers")
 layers.sort()
 prevlayer = None
@@ -53,7 +52,7 @@ prevlayer = None
 #     for t in range(len(cuttingtoolDiameters)):
 #         currentTool = cuttingtoolDiameters[t]
 #         currentColor = colors[t]
-#         space = int((1.4*currentTool)/(2*mmPerPixel))
+#         space = int((1.2*currentTool)/(2*mmPerPixel))
 #         print(space)
 #         for x in range (imagesize):
 #             if x % space != 0:
@@ -70,80 +69,140 @@ prevlayer = None
 #     prevlayer = im
 
 
-
-
-
-
-
-
-
-
 ######### Start by placing center of tool at upper left corner of piece #########
-feed = 2400 ##feed in mm/min
-
-gcode = "G91\nG21\nG00 X-10 F" + str(feed)
+feed = 800 ##feed in mm/min
+leftrightbuffer = 2 ##buffer on either side of map in mm
+gcode = "G91\nG21\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed)
 
 
 #########            -
 #########    - X +   Y
 #########            +
-spacemm = round((1.4*cuttingtoolDiameters[0])/2, 4)
+spacemm = round((1.2*cuttingtoolDiameters[0])/2, 4)
 spacepixels = int(spacemm/mmPerPixel)
 currentDepth = 0
 layers.reverse()
+layerAdjustment = 4
+onLeft = True
+
 for i, l in enumerate(layers):
+    # if (i < 230):
+    #     continue
+    if (i % layerAdjustment != 0):
+        continue
     im = Image.open("./tools/" + l)
-    gcode += "\nG00 Z-" + str(round(totaldepth/255,4)) + " F" + str(feed)
-    currentDepth += round(totaldepth/255,4)
-    print("Layer " + str(i) + ", Coding depth: " + str(round(currentDepth, 2)) + "mm")
+    gcode += "\nG00 Z-" + str(round(layerAdjustment*totaldepth/255,4)) + " F" + str(feed)
+    currentDepth += round(layerAdjustment*totaldepth/255,4)
+    print(l + ", Coding depth: " + str(round(currentDepth, 2)) + "mm")
     countx = 0
+    resetx = 0
     for x in range (imagesize):
         county = 0
         if x % spacepixels != 0:
             continue
-        if im.getpixel((x,0)) == colors[0]:
-            gcode += "\nG00 X10 F" + str(feed) #Move to edge of piece for next pass
-            cutting = True
-        else:
-            gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed) #Move up
-            gcode += "\nG00 X10 F" + str(feed) #Move to edge of piece for next pass
-            cutting = False
 
-        for y in range (imagesize):
-            if y % spacepixels != 0:
-                continue
-            if y + spacepixels >= imagesize:
-                break
-
-            if im.getpixel((x,y+spacepixels)) == colors[0]:
-                if cutting:
-                    gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+        ###Check if there are any cuts to make in this row###
+        cutFlag = True
+        # for y in range (imagesize):
+        #     if y % spacepixels != 0:
+        #         continue
+        #     if im.getpixel((x,y)) == colors[0]:
+        #         cutFlag = True
+        ###If the cutting tool is on the left side
+        if cutFlag:
+            if onLeft:
+                if im.getpixel((x,0)) == colors[0]:
+                    gcode += "\nG00 X"+ str(leftrightbuffer) +"  F" + str(feed) #Move to edge of piece for next pass
+                    cutting = True
                 else:
-                    gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+                    gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed) #Move up
+                    gcode += "\nG00 X"+ str(leftrightbuffer) +" F" + str(feed) #Move to edge of piece for next pass
+                    cutting = False
+
+                for y in range (imagesize):
+                    if y % spacepixels != 0:
+                        continue
+                    if y + spacepixels >= imagesize:
+                        break
+                    if im.getpixel((x,y+spacepixels)) == colors[0]:
+                        if cutting:
+                            gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+                        else:
+                            gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+                            gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
+                            cutting = True
+                    else:
+                        if cutting:
+                            gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed)
+                            gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+                            cutting = False
+                        else:
+                            gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
+                    county += 1
+
+                gcode += "\nG00 X"+ str(leftrightbuffer) +" F" + str(feed)
+                if cutting == False:
                     gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
                     cutting = True
-            else:
-                if cutting:
-                    gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed)
-                    gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
-                    cutting = False
-                else:
-                    gcode += "\nG01 X" + str(spacemm) + " F" + str(feed)
-            county += 1
+                onLeft = False
+                resetx = county
 
-        gcode += "\nG00 X10 F" + str(feed)
-        if cutting == False:
-            gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
-            cutting = True
+
+            else:
+                if im.getpixel((x,imagesize - 1)) == colors[0]:
+                    gcode += "\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed) #Move to edge of piece for next pass
+                    cutting = True
+                else:
+                    gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed) #Move up
+                    gcode += "\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed) #Move to edge of piece for next pass
+                    cutting = False
+
+                for y in reversed(range(imagesize)):
+                    if y % spacepixels != 0:
+                        continue
+                    if y - spacepixels < 0:
+                        break
+
+
+                    if im.getpixel((x,y-spacepixels)) == colors[2]:
+                        if cutting:
+                            gcode += "\nG01 X-" + str(spacemm) + " F" + str(feed)
+                        else:
+                            gcode += "\nG01 X-" + str(spacemm) + " F" + str(feed)
+                            gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
+                            cutting = True
+                    else:
+                        if cutting:
+                            gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed)
+                            gcode += "\nG01 X-" + str(spacemm) + " F" + str(feed)
+                            cutting = False
+                        else:
+                            gcode += "\nG01 X-" + str(spacemm) + " F" + str(feed)
+                    county += 1
+
+                gcode += "\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed)
+                if cutting == False:
+                    gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
+                    cutting = True
+                onLeft = True
+                resetx = county
+
+
+
 
         gcode += "\nG00 Y-" + str(spacemm) + " F" + str(feed) #Move down a row
-        gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed) #Move up
-        gcode += "\nG00 X-" + str(spacemm*county + 20) + " F" + str(feed) #Move back over to left (with margin)
-        gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed) #Move up
         countx += 1
 
 
-    gcode += "\nG00 Y" + str(spacemm*countx) + " F" + str(feed)
+    if onLeft:
+        gcode += "\nG00 Y" + str(spacemm*countx) + " F" + str(feed)
+    else:
+        gcode += "\nG00 Z" + str(currentDepth) + " F" + str(feed)
+        gcode += "\nG00 X-" + str(spacemm*resetx + leftrightbuffer*2) + " F" + str(feed)
+        gcode += "\nG00 Y" + str(spacemm*countx) + " F" + str(feed)
+        gcode += "\nG00 Z-" + str(currentDepth) + " F" + str(feed)
+
+    onLeft = True
     
 
 file = open("./gcode.gcode", "w")

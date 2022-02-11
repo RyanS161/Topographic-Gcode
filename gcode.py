@@ -8,7 +8,7 @@ from PIL import Image
 totalsize = 50 #Length of sides of the square
 bordersize = 0 #Width of the border
 totaldepth =  15 #Max depth of cuts
-cuttingtoolDiameters = [3.175] #Diameters of the cutting tools in inches
+cuttingtoolDiameters = [3.175] #Diameters of the cutting tools in mm
 
 #############################################################################################
 
@@ -40,33 +40,33 @@ colors.reverse()
 layers = os.listdir("./layers")
 layers.sort()
 prevlayer = None
+circleOverlap = 1.4
 
-# for layer in layers:
-#     im = Image.open("./layers/" + layer)
-#     if prevlayer != None:
-#         for x in range (im.size[0]):
-#             for y in range (im.size[1]):
-#                 if prevlayer.getpixel((x,y)) == colors[0]:
-#                     im.putpixel((x, y), colors[0])
+for layer in layers:
+    im = Image.open("./layers/" + layer)
+    if prevlayer != None:
+        for x in range (im.size[0]):
+            for y in range (im.size[1]):
+                if prevlayer.getpixel((x,y)) == colors[0]:
+                    im.putpixel((x, y), colors[0])
 
-#     for t in range(len(cuttingtoolDiameters)):
-#         currentTool = cuttingtoolDiameters[t]
-#         currentColor = colors[t]
-#         space = int((1.2*currentTool)/(2*mmPerPixel))
-#         print(space)
-#         for x in range (imagesize):
-#             if x % space != 0:
-#                 continue
-#             for y in range (imagesize):
-#                 if y % space != 0:
-#                     continue
-#                 if im.getpixel((x,y)) == (255, 255, 255):
-#                     if tool_fits(currentTool, im, mmPerPixel, imagesize, x, y):
-#                         im.putpixel((x, y), currentColor)
+    for t in range(len(cuttingtoolDiameters)):
+        currentTool = cuttingtoolDiameters[t]
+        currentColor = colors[t]
+        space = int((circleOverlap*currentTool)/(2*mmPerPixel))
+        for x in range (imagesize):
+            if x % space != 0:
+                continue
+            for y in range (imagesize):
+                if y % space != 0:
+                    continue
+                if im.getpixel((x,y)) == (255, 255, 255):
+                    if tool_fits(currentTool, im, mmPerPixel, imagesize, x, y):
+                        im.putpixel((x, y), currentColor)
     
-#     im.save("./tools/" + layer)
-#     print(layer)
-#     prevlayer = im
+    im.save("./tools/" + layer)
+    print(layer)
+    prevlayer = im
 
 
 ######### Start by placing center of tool at upper left corner of piece #########
@@ -78,15 +78,16 @@ gcode = "G91\nG21\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed)
 #########            -
 #########    - X +   Y
 #########            +
-spacemm = round((1.2*cuttingtoolDiameters[0])/2, 4)
+spacemm = round((circleOverlap*cuttingtoolDiameters[0])/2, 4)
 spacepixels = int(spacemm/mmPerPixel)
 currentDepth = 0
 layers.reverse()
 layerAdjustment = 4
 onLeft = True
+leftSideMax = int(imagesize/spacepixels)*spacepixels
 
 for i, l in enumerate(layers):
-    # if (i < 230):
+    # if (i > 3):
     #     continue
     if (i % layerAdjustment != 0):
         continue
@@ -149,7 +150,7 @@ for i, l in enumerate(layers):
 
 
             else:
-                if im.getpixel((x,imagesize - 1)) == colors[0]:
+                if im.getpixel((x,leftSideMax)) == colors[0]:
                     gcode += "\nG00 X-"+ str(leftrightbuffer) +" F" + str(feed) #Move to edge of piece for next pass
                     cutting = True
                 else:
@@ -164,7 +165,7 @@ for i, l in enumerate(layers):
                         break
 
 
-                    if im.getpixel((x,y-spacepixels)) == colors[2]:
+                    if im.getpixel((x,y-spacepixels)) == colors[0]:
                         if cutting:
                             gcode += "\nG01 X-" + str(spacemm) + " F" + str(feed)
                         else:
@@ -186,9 +187,6 @@ for i, l in enumerate(layers):
                     cutting = True
                 onLeft = True
                 resetx = county
-
-
-
 
         gcode += "\nG00 Y-" + str(spacemm) + " F" + str(feed) #Move down a row
         countx += 1
